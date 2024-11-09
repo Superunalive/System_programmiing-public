@@ -5,15 +5,21 @@ public _start
 include 'func.asm'
 
 section '.bss' writable                     
-  temp dq 1 
+  temp dq ? 
 
 _start:
     pop rcx
     mov rsi, [rsp + 8]
-    mov rax, rsi
+    mov rax, [rsi]
+    xor rdx, rdx
+    mov dl, al
+    push rdx
+    xor rax, rax
+    pop rax
     mov rbx, 10
     xor rcx, rcx
     inc rcx
+
     .iter:
         xor rdx, rdx
         div rbx
@@ -37,7 +43,6 @@ _start:
         call exit
 
 print_one:
-  mov [temp], 0
   push rax
   mov rax, 1
   mov edi, 1
