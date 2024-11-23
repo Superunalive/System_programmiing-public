@@ -8,7 +8,7 @@ section '.bss' writable
   a dq ?
   b dq ?
   c dq ?
-  temp dq ?
+  temp dq 0
 
 ;Current problem - segfault
 
@@ -17,6 +17,7 @@ _start:
     pop rcx
     xor rcx, rcx
     mov rsi, [rsp]
+    ;call check_sign is WIP, unfortunately
     call str_number
     mov [a], rax
     mov rsi, [rsp + 8]
@@ -35,11 +36,11 @@ _start:
     mov rax, [a]
     push rax
     sub rax, rcx
-    mul rbx
-    div rcx
+    imul rbx
+    idiv rcx
     xor rdx, rdx
     pop rbx
-    mul rbx
+    imul rbx
 
     mov rbx, 10
     xor rcx, rcx
@@ -61,6 +62,7 @@ _start:
         dec rcx
         cmp rcx, 0
         jne .print
+    call new_line
     call exit
 
 print_one:
@@ -73,3 +75,10 @@ print_one:
   mov edx, 1
   syscall
   ret
+
+;check_sign:
+  ;cmp byte [rsi], 45
+  ;jne .return
+  ;add rsi, 8
+  ;.return:
+    ;ret
