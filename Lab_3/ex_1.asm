@@ -39,6 +39,8 @@ _start:
         dec rcx
         cmp rcx, 0
         jne .print
+        
+    call new_line
     .end:
         call exit
 

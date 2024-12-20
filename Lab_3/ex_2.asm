@@ -10,7 +10,6 @@ section '.bss' writable
   c dq ?
   temp dq 0
 
-;Current problem - segfault
 
 _start:
     pop rcx
