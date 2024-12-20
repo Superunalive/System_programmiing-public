@@ -17,19 +17,12 @@ _start:
     mov [temp], rax
 
     ;now do normal comparison
-    mov rbx, 11
-    mov rcx, 5
+    mov rbx, 55
     @@:
         mov rax, [temp]
-        push rax
         .check:
             xor rdx, rdx
             div rbx
-            cmp rdx, 0
-            je .repeat
-            pop rax
-            xor rdx, rdx
-            div rcx
             cmp rdx, 0
             je .repeat
         
