@@ -8,14 +8,14 @@ include 'func.asm'
 section '.bss' writable
   
   pos dq 0
-  endist dq 4
+  endist dq 0
   output dq 0
   buffer rb 2
 
 _start:
   ;checking for number of arguments
   pop rcx 
-  cmp rcx, 4
+  cmp rcx, 5
   jl .l1 
 
   ;reading pos argument. Decreasing by 1 because (pos) position is (pos)-1 away from 1st position
@@ -23,6 +23,10 @@ _start:
   call str_number
   dec rax
   mov [pos], rax
+
+  mov rsi, [rsp + 32]
+  call str_number
+  mov [endist], rax
 
   ;finished output to console
   ;need: read 1 more argument - output file
