@@ -12,10 +12,12 @@ section '.bss' writable
   output dq 0
   buffer rb 2
 
+;argument list is as follows:
+;input file, output file, starting position, step
 _start:
   ;checking for number of arguments
   pop rcx 
-  cmp rcx, 5
+  cmp rcx, 4
   jl .l1 
 
   ;reading pos argument. Decreasing by 1 because (pos) position is (pos)-1 away from 1st position

@@ -1,48 +1,66 @@
 format elf64
-	public _start
-	include 'func.asm'
 
-	volume = 10000
-	section '.text' executable
-	
-_start:
-	;; выполняем анонимное отображение в память
-	mov rdi, 0    ;начальный адрес выберет сама ОС
-	mov rsi, volume ;задаем размер области памяти
-	mov rdx, 0x3  ;совмещаем флаги PROT_READ | PROT_WRITE
-	mov r10,0x22  ;задаем режим MAP_ANONYMOUS|MAP_PRIVATE
-	mov r8, -1   ;указываем файловый дескриптор null
-	mov r9, 0     ;задаем нулевое смещение
-	mov rax, 9    ;номер системного вызова mmap
-	syscall
+public create_array
+public free_memory
+public fill
+include 'func.asm'
 
-	mov rsi, rax  ;Сохраняем адрес памяти анонимного отображения
+array_begin rq 1
+array_end rq 1
+count rq 1
 
-  ;reads console input
-	mov rax, 0
-	mov rdi, 0
-	mov rdx,  1000
-	syscall
+;no input
+;rax - pointer to the start of array (output)
+create_array:
 
-  ;reads length. Console input is saved in rsi
-	xor rcx, rcx
-	.loop:
-	mov al, [rsi+rcx]
-	inc rcx
-	cmp rax, 0x0A
-	jne .loop
+	;Finding the beginning of heap address
+    xor rdi, rdi
+    mov rax, 12
+    syscall
+    cmp rax, 0
+    jl error
 
-  ;printing result as string
-	dec rcx
-	mov byte [rsi+rcx], 0
-	call new_line
-	call print_str
-	call new_line
+    mov [array_begin], rax
+    mov [array_end], rax
+    mov rax, array_begin
+    ret
 
-	;; выполняем системный вызов munmap, освобождая память
-	mov rdi, rsi
-	mov rsi, volume
-	mov rax, 11
-	syscall
+;Filling array
+;rdi - number of elements (input)
+;no output (although technically speaking there is a pointer to last number)
+fill:
+    mov r12, rdi
+    xor rbx, rbx
+	mov rcx, array_begin
+    xor rdi, rdi
+    mov rdi, [array_begin]
+    .loop:
+        ;making space for next element
+        mov rdi, [array_end]
+        add rdi, 8
+        mov rax, 12
+        syscall
+        cmp rax, 0
+        jl error
+        mov [array_end], rax
+        mov rdi, [array_end]
 
-	call exit
+		;putting new number in position
+        mov qword [rdi], 1
+
+        inc rbx
+        cmp rbx, rax
+        jne .loop
+
+    ret
+
+free_memory:
+    xor rdi, [array_begin]
+    mov rax, 12
+    syscall
+    ret
+
+error:
+    mov rsi, "Error"
+    call print_str
+    call exit

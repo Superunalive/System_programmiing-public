@@ -9,6 +9,8 @@ section '.bss' writable
   output dq 0
   buffer rb 2
 
+;argument list is as follows:
+;input file, output file, step
 _start:
   ;checking for number of arguments
   pop rcx 

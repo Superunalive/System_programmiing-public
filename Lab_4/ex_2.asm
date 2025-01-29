@@ -20,7 +20,6 @@ _start:
     div rbx
     cmp rdx, 0
     jne .uneven
-    ;please separate
 
     .even:
         xor rdx, rdx
