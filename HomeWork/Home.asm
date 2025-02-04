@@ -1,66 +1,95 @@
-format elf64
+format ELF64 ;Формат для 64-битного Linux
 
-public create_array
-public free_memory
-public fill
+public _start
+public add_elem
+
 include 'func.asm'
 
-array_begin rq 1
-array_end rq 1
-count rq 1
+section '.data' writable
+    strMessage db 'Hello, Linux with brk!'  ; Строка для записи в память
+    strMessageLen dq $ - strMessage            ; Длина строки
 
-;no input
-;rax - pointer to the start of array (output)
-create_array:
+section '.bss' writable
+    newelem dq '1'
+    originalBrk dq ?      ; Переменная для хранения оригинального значения brk
+    allocatedMemory dq ?  ; Переменная для хранения адреса выделенной памяти
 
-	;Finding the beginning of heap address
-    xor rdi, rdi
-    mov rax, 12
+section '.text' executable
+
+_start:
+    ; Получаем текущее значение brk
+    mov rax, 12           ; Номер системного вызова brk
+    xor rdi, rdi          ; Аргумент 0 — получить текущее значение brk
     syscall
-    cmp rax, 0
-    jl error
 
-    mov [array_begin], rax
-    mov [array_end], rax
-    mov rax, array_begin
-    ret
+    ; Сохраняем оригинальное значение brk
+    mov [originalBrk], rax
 
-;Filling array
-;rdi - number of elements (input)
-;no output (although technically speaking there is a pointer to last number)
-fill:
-    mov r12, rdi
-    xor rbx, rbx
-	mov rcx, array_begin
-    xor rdi, rdi
-    mov rdi, [array_begin]
+    ; Выделяем память, увеличивая brk
+    add rax, [strMessageLen] ; Увеличиваем brk на длину строки
+    mov rdi, rax           ; Новое значение brk
+    mov rax, 12            ; Номер системного вызова brk
+    syscall
+
+    ; Проверяем, успешно ли изменён brk
+    cmp rax, [originalBrk]
+    jle .exit              ; Если brk не изменился, завершаем программу
+
+    ; Сохраняем адрес выделенной памяти
+    mov [allocatedMemory], rax
+
+    ; Копируем строку в выделенную память
+    mov rdi, rax           ; Адрес выделенной памяти
+    lea rsi, [strMessage]  ; Адрес строки
+    mov rcx, [strMessageLen] ; Длина строки
+    rep movsb              ; Копируем байты
+
+    xor rcx, rcx
     .loop:
-        ;making space for next element
-        mov rdi, [array_end]
-        add rdi, 8
-        mov rax, 12
-        syscall
-        cmp rax, 0
-        jl error
-        mov [array_end], rax
-        mov rdi, [array_end]
-
-		;putting new number in position
-        mov qword [rdi], 1
-
-        inc rbx
-        cmp rbx, rax
+        push rcx
+        call add_elem
+        pop rcx
+        inc rcx
+        cmp rcx, 16000
         jne .loop
 
-    ret
-
-free_memory:
-    xor rdi, [array_begin]
-    mov rax, 12
+    ; Выводим строку на экран с помощью syscall write
+    mov rax, 1             ; Номер системного вызова write
+    mov rdi, 1             ; Файловый дескриптор (1 — стандартный вывод)
+    mov rsi, [allocatedMemory] ; Адрес строки
+    mov rdx, [strMessageLen] ; Длина строки
     syscall
-    ret
 
-error:
-    mov rsi, "Error"
-    call print_str
-    call exit
+    ; Восстанавливаем оригинальное значение brk (освобождаем память)
+    mov rax, 12            ; Номер системного вызова brk
+    mov rdi, [originalBrk] ; Оригинальное значение brk
+    syscall
+
+.exit:
+    ; Завершаем программу с помощью syscall exit
+    mov rax, 60            ; Номер системного вызова exit
+    xor rdi, rdi           ; Код возврата (0 — успешное завершение)
+    syscall
+
+add_elem:
+    ;more memory
+    mov rax, [allocatedMemory]
+    add rax, [strMessageLen]
+    inc rax
+    cmp rax, [originalBrk]
+    jbe @f
+
+    mov rax, 12
+    mov rdi, [originalBrk]
+    add rdi, [strMessageLen]
+    add rdi, 4096
+    syscall
+
+    @@:
+    mov rdi, [allocatedMemory]
+    add rdi, [strMessageLen]
+    mov byte [rdi], '1'
+    mov rax, [strMessageLen]
+    inc rax
+    mov [strMessageLen], rax
+    ret

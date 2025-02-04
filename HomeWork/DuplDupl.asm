@@ -1,140 +1,95 @@
-format elf64
-	public _start
-	public add_element
-	public delete_element
-	public convert_print
-	include 'func.asm'
+format ELF64 ;Формат для 64-битного Linux
 
-	volume = 10000
-	section '.text' executable
-	
+public _start
+public add_elem
+
+include 'func.asm'
+
+section '.data' writable
+    strMessage db 'Hello, Linux with brk!'  ; Строка для записи в память
+    strMessageLen dq $ - strMessage            ; Длина строки
+
+section '.bss' writable
+    newelem dq '1'
+    originalBrk dq ?      ; Переменная для хранения оригинального значения brk
+    allocatedMemory dq ?  ; Переменная для хранения адреса выделенной памяти
+
+section '.text' executable
+
 _start:
-	;; выполняем анонимное отображение в память
-	mov rdi, 0    ;начальный адрес выберет сама ОС
-	mov rsi, volume ;задаем размер области памяти
-	mov rdx, 0x3  ;совмещаем флаги PROT_READ | PROT_WRITE
-	mov r10,0x22  ;задаем режим MAP_ANONYMOUS|MAP_PRIVATE
-	mov r8, -1   ;указываем файловый дескриптор null
-	mov r9, 0     ;задаем нулевое смещение
-	mov rax, 9    ;номер системного вызова mmap
-	syscall
+    ; Получаем текущее значение brk
+    mov rax, 12           ; Номер системного вызова brk
+    xor rdi, rdi          ; Аргумент 0 — получить текущее значение brk
+    syscall
 
-	mov rsi, rax  ;Сохраняем адрес памяти анонимного отображения
-	
-	xor rax, rax
-	mov dl, '1'
-	mov rcx, 0
-	;moving with mov [placeofstring + position], number
+    ; Сохраняем оригинальное значение brk
+    mov [originalBrk], rax
 
-	;adding elements from 1 to 9
-	@@:
-		call add_element
-		inc dl
-		cmp dl, '9'
-		jne @b
-	;todo - 1) count all numbers ending with 1, 2) get all odd numbers, 3) fill with random numbers
-	;before that - print individual ascii codes for each element
+    ; Выделяем память, увеличивая brk
+    add rax, [strMessageLen] ; Увеличиваем brk на длину строки
+    mov rdi, rax           ; Новое значение brk
+    mov rax, 12            ; Номер системного вызова brk
+    syscall
 
-	;printing result as string. Need to convert each character into ascii code
-	mov rcx, rsi
-	push rcx
-	.ploop:
-		mov al, [rsi]
-		push rsi
-		xor rsi, rsi
-		call convert_print
-		call new_line
-		pop rsi
-		inc rsi
-		cmp byte [rsi], 0x0A
-		jne .ploop
-	call new_line
+    ; Проверяем, успешно ли изменён brk
+    cmp rax, [originalBrk]
+    jle .exit              ; Если brk не изменился, завершаем программу
 
-	;; syscall munmap, freeing memory
-	mov rdi, rsi
-	mov rsi, volume
-	mov rax, 11
-	syscall
+    ; Сохраняем адрес выделенной памяти
+    mov [allocatedMemory], rax
 
-	call exit
+    ; Копируем строку в выделенную память
+    mov rdi, rax           ; Адрес выделенной памяти
+    lea rsi, [strMessage]  ; Адрес строки
+    mov rcx, [strMessageLen] ; Длина строки
+    rep movsb              ; Копируем байты
 
-;input - rsi (place of begin), rcx (size), rdx (element to add)
-;output... I just add element and increase size. that's it, no output
-add_element:
-	cmp rcx, volume
-	je @f
+    xor rcx, rcx
+    .loop:
+        push rcx
+        call add_elem
+        pop rcx
+        inc rcx
+        cmp rcx, 16000
+        jne .loop
 
-	mov [rsi + rcx], rdx
-	inc rcx
-	mov byte [rsi + rcx], 0x0A
+    ; Выводим строку на экран с помощью syscall write
+    mov rax, 1             ; Номер системного вызова write
+    mov rdi, 1             ; Файловый дескриптор (1 — стандартный вывод)
+    mov rsi, [allocatedMemory] ; Адрес строки
+    mov rdx, [strMessageLen] ; Длина строки
+    syscall
 
-	@@:
-	ret
+    ; Восстанавливаем оригинальное значение brk (освобождаем память)
+    mov rax, 12            ; Номер системного вызова brk
+    mov rdi, [originalBrk] ; Оригинальное значение brk
+    syscall
 
-;input - rsi (place of begin), rcx (size)
-;output... I just delete element and decrease size. that's it, no output
-delete_element:
-	cmp rcx, 0
-	je @f
+.exit:
+    ; Завершаем программу с помощью syscall exit
+    mov rax, 60            ; Номер системного вызова exit
+    xor rdi, rdi           ; Код возврата (0 — успешное завершение)
+    syscall
 
-	push rax
-	push rbx
-	xor rax, rax
-	xor rbx, rbx
-	;removing element from the other end
-	.dloop:
-		mov byte bl, [rsi + rax + 1]
-		mov byte [rsi + rax], bl
-		inc rax
-		cmp rax, rcx
-		jl .dloop
-	mov byte [rsi + rcx], 00
-	dec rcx
-	pop rbx
-	pop rax
+add_elem:
+    ;more memory
+    mov rax, [allocatedMemory]
+    add rax, [strMessageLen]
+    inc rax
+    cmp rax, [originalBrk]
+    jbe @f
 
-	@@:
-	ret
+    mov rax, 12
+    mov rdi, [originalBrk]
+    add rdi, [strMessageLen]
+    add rdi, 4096
+    syscall
 
-convert_print:
-	push rsi
-
-	;each byte is no more than 1000, so 3 numbers are enough
-	mov rbx, 10
-	xor rdx, rdx
-	div rbx
-	add rdx, 48
-	push rdx
-
-	xor rdx, rdx
-	div rbx
-	add rdx, 48
-	push rdx
-	add rax, 48
-
-	mov rdx, 3
-	cmp rax, 0
-	jne @f
-	dec rdx
-	pop rax
-
-	cmp rax, 0
-	jne @f
-	dec rdx
-	pop rax
-
-	@@:
-	push rax
-	mov rsi, rsp
-	mov rax, 1
-	mov rdi, 1
-	;rdx already has nessecary len
-	syscall
-	@@:
-	pop rax
-	dec rdx
-	cmp rdx, 0
-	jne @b
-
-	pop rsi
-	ret
+    @@:
+    mov rdi, [allocatedMemory]
+    add rdi, [strMessageLen]
+    mov byte [rdi], '1'
+    mov rax, [strMessageLen]
+    inc rax
+    mov [strMessageLen], rax
+    ret
