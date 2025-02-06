@@ -1,222 +1,232 @@
-format ELF64  ; Формат для 64-битного Linux
+format ELF64
 
 include 'func.asm'
 public _start
 section '.data' writable
-    array_ptr dq 0       ; Указатель на начало массива
-    array_size dq 0      ; Текущий размер массива
-    brk_start dq 0       ; Начальное значение brk
-    random_seed dd 0     ; Семя для генерации случайных чисел
-    buffer db 20 dup(0)  ; Буфер для преобразования числа в строку
-    newline db 10        ; Символ новой строки
+    array_ptr dq 0       ; Pointer to end of array
+    array_size dq 0      ; Current element count
+    brk_start dq 0       ; Pointer to beginning of array
+    number dq 0     ; temp place for number
+    buffer db 20 dup(0)  ; Buffer to convert string to number
+    f db '/dev/urandom', 0 ; File for random numbers
 
 section '.text' executable
+
+; Important - some of the new methods used here are explained
+; This is more for me to understand them as this is my first time using some of them
 _start:
-    ; Инициализация программы
+    ; Initializing program
     call initialize_memory
 
-    ; Заполнение массива случайными числами
-    call fill_with_random_numbers
+    ; Fill with random numbers
+    call fill
 
-    ; Добавление числа в конец массива
-    mov rdi, 41          ; Число для добавления
+    ; Adding new element to end of array
+    mov rdi, 41
     call add_to_end
 
-    ; Удаление числа из начала массива
+    ; Deleting element from start of array
     call remove_from_beginning
 
-    ; Подсчет чисел, оканчивающихся на 1
+    ; Counting numbers that end with 1 in base 10 (i.e. 11, 21, 101 and NOT 3 (in base 2 it is 11))
     call count_numbers_ending_with_1
-    mov rdi, rax         ; Результат подсчета
-    call print_number    ; Вывод результата
+    call number_str
+    call print_str
     call new_line
 
-    ; Получение списка нечетных чисел
+    ; Getting full list of odd numbers
     call get_odd_numbers_list
 
-    ; Завершение программы
+    ; Exit + freeing memory
     call exit_program
 
-; Инициализация памяти
+; Input - none
+; Output - pointer to the beginning of the array
 initialize_memory:
-    mov rax, 12          ; Системный вызов brk
-    xor rdi, rdi         ; Нулевой аргумент для получения текущего значения brk
+
+    ;syscall brk
+    mov rax, 12
+    xor rdi, rdi         ; not moving the pointer
     syscall
-    mov [brk_start], rax ; Сохраняем начальное значение brk
-    mov [array_ptr], rax ; Устанавливаем указатель на начало массива
+
+    mov [brk_start], rax ; saving current position (beginning of array)
+    mov [array_ptr], rax ; saving current position (end of array)
     ret
 
-; Добавление числа в конец массива
+; Input - number to add (rdi)
+; Output - none
 add_to_end:
-    push rdi             ; Сохраняем число для добавления
-    mov rax, 12          ; Системный вызов brk
+    ; Saving the number
+    push rdi
+
+    ;brk syscall to accommodate new element
+    mov rax, 12          
     mov rdi, [array_ptr]
-    add rdi, 8           ; Увеличиваем память на 8 байт (64-битное число)
+    add rdi, 8           ; (+ 8 bytes for 1 number)
     syscall
-    mov [array_ptr], rax ; Обновляем указатель на конец массива
-    pop rdi              ; Восстанавливаем число
-    mov [rax - 8], rdi   ; Записываем число в конец массива
-    inc qword [array_size] ; Увеличиваем размер массива
+    
+    ; Changing some constants + putting the new number in its place
+    mov [array_ptr], rax
+
+    pop rdi
+    mov [rax - 8], rdi
+    inc qword [array_size]
     ret
 
-; Удаление числа из начала массива
+; Input - none
+; Output - none
 remove_from_beginning:
+    ; Check if empty
     cmp qword [array_size], 0
-    je .done             ; Если массив пуст, ничего не делаем
+    je @f
 
-    mov rsi, [array_ptr] ; Указатель на конец массива
-    mov rcx, [array_size] ; Текущий размер массива
-    shl rcx, 3           ; Умножаем на 8 (размер числа)
-    sub rsi, rcx         ; Указатель на начало массива
+    mov rsi, [brk_start]
 
-    ; Сдвигаем элементы массива влево
-    mov rdi, rsi         ; Указатель на текущий элемент (куда копируем)
-    add rsi, 8           ; Указатель на следующий элемент (откуда копируем)
+    ; Moving left
+    mov rdi, rsi         ; to
+    add rsi, 8           ; from
     mov rcx, [array_size]
-    dec rcx              ; Уменьшаем количество копируемых элементов
-    cld                  ; Сброс флага направления (движение вперед)
-    rep movsq            ; Копируем элементы массива влево
+    dec rcx              ; we need only all but 1
+    jz .clear_last       ; If rcx is 0 - just clear array
 
-    ; Уменьшаем размер массива
+    ; Copying the array
+    ;rep = repeat
+    ;movsq = moves from one buffer to another (qwords)
+    rep movsq                ; moves from rdi to rsi, then increments rdi, rsi by 8 and decrements rcx by 1 until 0
+
+    ; Clearing last element before changing array size
+    .clear_last:
+        mov rsi, [array_ptr]
+        sub rsi, 8
+        mov qword [rsi], 0
+
+    ; Decreasing array size (constant and the array itself)
     dec qword [array_size]
 
-    ; Очищаем последний элемент (опционально, для безопасности)
     mov rsi, [array_ptr]
-    sub rsi, 8           ; Указатель на последний элемент
-    mov qword [rsi], 0   ; Очищаем последний элемент
+    sub rsi, 8
+    mov rax, 12
+    syscall
 
-.done:
+    mov [array_ptr], rax
+
+    @@:
     ret
 
-; Заполнение массива случайными числами
-fill_with_random_numbers:
-    mov rcx, 10          ; Заполняем массив 10 числами
-.loop:
-    push rcx
-    call generate_random_number
-    mov rdi, rax         ; Случайное число
-    call print_number
-    call add_to_end      ; Добавляем в массив
-    pop rcx
-    loop .loop
+;tbd - change to actually FILL, not create
+; Input - none
+; Output - none
+fill:
+    ;opening the urandom file
+    mov rdi, f
+    mov rax, 2
+    mov rsi, 0o
+    syscall
+    cmp rax, 0
+    jl @f
+    mov r12, rax
+
+    mov rcx, 5          ; Currently just adds 10 numbers
+    .loop:
+        ;current problem - here number_str SOMEHOW changes SOMETHING and breaks numbers
+        ;maybe check other places where they are used - might help
+        push rcx
+        call random
+        mov rdi, rax
+        push rax
+        call number_str
+        call print_str
+        call new_line
+        pop rdi
+        call add_to_end
+        pop rcx
+        loop .loop
+    
     call new_line
+
+    ;closing file
+    mov rdi, r12
+    mov rax, 3
+    syscall
+    @@:
     ret
 
-; Генерация случайного числа
-generate_random_number:
-    mov eax, [random_seed]
-    imul eax, 1103515245
-    add eax, 12345
-    mov [random_seed], eax
-    and eax, 0x7FFFFFFF  ; Ограничиваем диапазон
+; No input
+; Output - the number (rax)
+random:
+    ;reading from urandom file. r12 - file descriptor
+    xor rax, rax
+    mov rdi, r12
+    mov rsi, number
+    mov rdx, 1
+    syscall
+    mov rax, [number]
     ret
 
-; Подсчет чисел, оканчивающихся на 1
+; Input - none
+; Output - numbers ending with 1 (rax)
 count_numbers_ending_with_1:
-    xor rax, rax         ; Счетчик (результат)
-    mov rcx, [array_size] ; Текущий размер массива
-    test rcx, rcx        ; Проверяем, пуст ли массив
-    jz .done             ; Если массив пуст, завершаем
-
-    mov rax, rcx
-    mov rbx, 8
-    xor rdx, rdx
-    mul rbx
-    xor rbx, rbx
-    xor rdx, rdx
-    mov rsi, [array_ptr] ; Указатель на конец массива
-    sub rsi, rax    ; Указатель на начало массива
+    ; Initializing counter + testing array size
     xor rax, rax
+    mov rcx, [array_size]
+    ;test = logical AND for each bit. Only changes flags. Here it basically checks if rcx is 0
+    test rcx, rcx
+    jz .done
+    
+    mov rsi, [brk_start]
 
-.loop:
-    push rax
-    mov rax, [rsi]       ; Загружаем текущее число из массива
-    xor rdx, rdx
-    mov rbx, 10
-    div rbx
-    pop rax
-    cmp rdx, 1          ; Проверяем, оканчивается ли число на 1
-    jne .next             ; Если не оканчивается, переходим к следующему числу
-    inc rax              ; Увеличиваем счетчик
+    ; rax - counter, rsi - place of current number
+    .loop:
+        push rax
+        mov rax, [rsi]
+        xor rdx, rdx
+        mov rbx, 10
+        div rbx
+        pop rax
+        cmp rdx, 1
+        jne .next
+    
+        inc rax
 
-.next:
-    add rsi, 8           ; Переходим к следующему элементу массива
-    loop .loop           ; Повторяем для всех элементов массива
+        .next:
+            add rsi, 8
+            loop .loop
 
-.done:
-    ret
+    .done:
+        ret
 
-; Получение списка нечетных чисел
+; Input - none
+; Output - none, but it prints a list
 get_odd_numbers_list:
-    mov rcx, [array_size] ; Текущий размер массива
-    test rcx, rcx        ; Проверяем, пуст ли массив
-    jz .done             ; Если массив пуст, завершаем
+    ; Checking if array is empty
+    mov rcx, [array_size]
+    test rcx, rcx
+    jz @f
 
-    mov rsi, [array_ptr] ; Указатель на конец массива
-    mov rax, rcx
-    xor rdx, rdx
-    mov rbx, 8
-    mul rbx
-    xor rbx, rbx
-    xor rdx, rdx
-    sub rsi, rax     ; Указатель на начало массива
-    xor rax, rax
+    mov rsi, [brk_start]
+    
 
-.loop:
-    push rcx
-    mov rdx, [rsi]       ; Загружаем текущее число из массива
-    test rdx, 1          ; Проверяем, является ли число нечетным
-    ;jz .next             ; Если четное, переходим к следующему числу
+    .loop:
+        push rcx
+        mov rdx, [rsi]
+        test rdx, 1
+        ;jz .next
 
-    ; Выводим нечетное число
-    mov rdi, rdx         ; Передаем число в rdi для вывода
-    call print_number    ; Вызываем функцию вывода числа
+        push rsi
+        mov rax, rdx
+        call number_str
+        call print_str
+        call new_line
+        pop rsi
 
-.next:
-    pop rcx
-    add rsi, 8           ; Переходим к следующему элементу массива
-    loop .loop           ; Повторяем для всех элементов массива
+        .next:
+            pop rcx
+            add rsi, 8
+            loop .loop
 
-.done:
+    @@:
     ret
 
-; Вывод числа на экран в удобочитаемом формате
-print_number:
-    push rdi
-    push rsi
-    push rax
-    mov rax, rdi         ; Число для вывода
-    lea rdi, [buffer + 19] ; Указатель на конец буфера
-    mov byte [rdi], 0    ; Завершающий нулевой символ
-    mov rcx, 10          ; Основание системы счисления (десятичная)
-.convert_loop:
-    dec rdi              ; Сдвигаем указатель на предыдущий байт
-    xor rdx, rdx         ; Очищаем rdx для деления
-    div rcx              ; Делим rax на 10, остаток в rdx
-    add dl, '0'          ; Преобразуем остаток в символ
-    mov [rdi], dl        ; Сохраняем символ в буфер
-    test rax, rax        ; Проверяем, закончилось ли число
-    jnz .convert_loop    ; Если нет, продолжаем
-
-    ; Вывод строки
-    mov rsi, rdi         ; Указатель на начало строки
-    mov rdx, buffer + 20 ; Конец буфера
-    sub rdx, rsi         ; Длина строки
-    mov rax, 1           ; Системный вызов write
-    mov rdi, 1           ; Файловый дескриптор (stdout)
-    syscall
-
-    ; Вывод символа новой строки
-    mov rax, 1           ; Системный вызов write
-    mov rdi, 1           ; Файловый дескриптор (stdout)
-    lea rsi, [newline]   ; Указатель на символ новой строки
-    mov rdx, 1           ; Длина (1 байт)
-    syscall
-
-    pop rax
-    pop rsi
-    pop rdi
-    ret
 
 ; Завершение программы
 exit_program:
