@@ -107,8 +107,10 @@ number_str:
   push rbx
   push rcx
   push rdx
+
   xor rcx, rcx
   mov rbx, 10
+
   .loop_1:
     xor rdx, rdx
     div rbx
@@ -117,6 +119,7 @@ number_str:
     inc rcx
     cmp rax, 0
     jne .loop_1
+
   xor rdx, rdx
   .loop_2:
     pop rax
@@ -124,8 +127,10 @@ number_str:
     inc rdx
     dec rcx
     cmp rcx, 0
-  jne .loop_2
-  mov byte [rsi+rdx], 0   
+    jne .loop_2
+  
+  mov byte [rsi+rdx], 0
+    
   pop rdx
   pop rcx
   pop rbx

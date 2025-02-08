@@ -1,6 +1,5 @@
 format ELF64
 
-include 'func.asm'
 public _start
 section '.data' writable
     array_ptr dq 0       ; Pointer to end of array
@@ -30,15 +29,14 @@ _start:
 
     ; Counting numbers that end with 1 in base 10 (i.e. 11, 21, 101 and NOT 3 (in base 2 it is 11))
     call count_numbers_ending_with_1
-    call number_str
-    call print_str
-    call new_line
+    mov rdi, rax
+    call print_number
 
     ; Getting full list of odd numbers
     call get_odd_numbers_list
 
     ; Exit + freeing memory
-    call exit_program
+    call exit
 
 ; Input - none
 ; Output - pointer to the beginning of the array
@@ -133,12 +131,8 @@ fill:
         push rcx
         call random
         mov rdi, rax
-        push rax
-        call number_str
-        call print_str
-        call new_line
-        pop rdi
         call add_to_end
+        call print_number
         pop rcx
         loop .loop
     
@@ -153,6 +147,7 @@ fill:
 
 ; No input
 ; Output - the number (rax)
+;Remember to return the number of bytes to 8!
 random:
     ;reading from urandom file. r12 - file descriptor
     xor rax, rax
@@ -212,12 +207,8 @@ get_odd_numbers_list:
         test rdx, 1
         ;jz .next
 
-        push rsi
-        mov rax, rdx
-        call number_str
-        call print_str
-        call new_line
-        pop rsi
+        mov rdi, rdx
+        call print_number
 
         .next:
             pop rcx
@@ -227,9 +218,64 @@ get_odd_numbers_list:
     @@:
     ret
 
+;The function makes new line
+new_line:
+   push rax
+   push rdi
+   push rsi
+   push rdx
+   push rcx
+   mov rax, 0xA
+   push rax
+   mov rdi, 1
+   mov rsi, rsp
+   mov rdx, 1
+   mov rax, 1
+   syscall
+   pop rax
+   pop rcx
+   pop rdx
+   pop rsi
+   pop rdi
+   pop rax
+   ret
+
+; Converts number to string and prints it. Done like this because number_str for some reason breaks my program
+; Input - number (rdi)
+; Output - none, but prints number
+print_number:
+    push rdi
+    push rsi
+    push rax
+    mov rax, rdi         ; Input
+    lea rdi, [buffer + 19] ; End of buffer
+    mov byte [rdi], 0    ; Last symbol is NULL
+    mov rcx, 10          ; Base 10
+.convert_loop:
+    dec rdi
+    xor rdx, rdx
+    div rcx
+    add dl, '0'
+    mov [rdi], dl
+    test rax, rax        ; testing for 0
+    jnz .convert_loop
+
+    ; Вывод строки
+    mov rsi, rdi         ; Pointer to the beginning of string
+    mov rdx, buffer + 20 ; End of buffer
+    sub rdx, rsi         ; String length
+    mov rax, 1           ; syscall write
+    mov rdi, 1           ; standard output
+    syscall
+
+    call new_line
+    pop rax
+    pop rsi
+    pop rdi
+    ret
 
 ; Завершение программы
-exit_program:
+exit:
     mov rax, 60          ; Системный вызов exit
     xor rdi, rdi         ; Код возврата 0
     syscall
