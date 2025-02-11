@@ -41,7 +41,7 @@ _start:
   call noecho
   call start_color
 
-  ;this is blue - need red instead
+  ;this is red
   mov rdx, 0x1
   mov rsi, 0x0
   mov rdi, 0x1

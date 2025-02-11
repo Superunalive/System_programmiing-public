@@ -1,11 +1,13 @@
 format ELF64
 
+;Comment for myself - currently my implementation of create_array breaks all of this code
+;Idk how to fix - need to ask AI
 public _start
 section '.data' writable
     array_ptr dq 0       ; Pointer to end of array
     array_size dq 0      ; Current element count
     brk_start dq 0       ; Pointer to beginning of array
-    number dq 0     ; temp place for number
+    number dq 0          ; Temp place for number
     buffer db 20 dup(0)  ; Buffer to convert string to number
     f db '/dev/urandom', 0 ; File for random numbers
 
@@ -15,7 +17,8 @@ section '.text' executable
 ; This is more for me to understand them as this is my first time using some of them
 _start:
     ; Initializing program
-    call initialize_memory
+    mov rdi, 5
+    call create_array
 
     ; Fill with random numbers
     call fill
@@ -38,10 +41,12 @@ _start:
     ; Exit + freeing memory
     call exit
 
-; Input - none
-; Output - pointer to the beginning of the array
-initialize_memory:
+; Input - number of elements (rdi)
+; Output - pointer to the beginning of the array (rax)
+create_array:
 
+    push rdi
+    push rdi
     ;syscall brk
     mov rax, 12
     xor rdi, rdi         ; not moving the pointer
@@ -49,6 +54,18 @@ initialize_memory:
 
     mov [brk_start], rax ; saving current position (beginning of array)
     mov [array_ptr], rax ; saving current position (end of array)
+    
+    ;brk syscall to increase array size
+    xor rax, rax
+    pop rax
+    mov rdi, [brk_start + rax * 8]
+    mov rax, 12
+    syscall
+    
+    ; Changing some constants + putting the new number in its place
+    mov [array_ptr], rax
+    pop rdi
+    add qword [array_size], rdi
     ret
 
 ; Input - number to add (rdi)
@@ -79,7 +96,7 @@ remove_from_beginning:
     je @f
 
     mov rsi, [brk_start]
-
+    
     ; Moving left
     mov rdi, rsi         ; to
     add rsi, 8           ; from
@@ -90,7 +107,13 @@ remove_from_beginning:
     ; Copying the array
     ;rep = repeat
     ;movsq = moves from one buffer to another (qwords)
-    rep movsq                ; moves from rdi to rsi, then increments rdi, rsi by 8 and decrements rcx by 1 until 0
+    ;rep movsq                ; moves from rdi to rsi, then increments rdi, rsi by 8 and decrements rcx by 1 until 0
+    .mloop:
+        mov rax, rsi
+        mov rdi, rax
+        add rdi, 8
+        add rsi, 8
+        loop .mloop
 
     ; Clearing last element before changing array size
     .clear_last:
@@ -124,17 +147,15 @@ fill:
     jl @f
     mov r12, rax
 
-    mov rcx, 5          ; Currently just adds 10 numbers
+    xor rdx, rdx
     .loop:
-        ;current problem - here number_str SOMEHOW changes SOMETHING and breaks numbers
-        ;maybe check other places where they are used - might help
-        push rcx
         call random
+        mov [brk_start + rdx * 8], rax
         mov rdi, rax
-        call add_to_end
         call print_number
-        pop rcx
-        loop .loop
+        add rdx, 1
+        cmp rdx, [array_size]
+        jne .loop
     
     call new_line
 
@@ -147,15 +168,16 @@ fill:
 
 ; No input
 ; Output - the number (rax)
-;Remember to return the number of bytes to 8!
 random:
+    push rdx
     ;reading from urandom file. r12 - file descriptor
     xor rax, rax
     mov rdi, r12
     mov rsi, number
-    mov rdx, 1
+    mov rdx, 8
     syscall
     mov rax, [number]
+    pop rdx
     ret
 
 ; Input - none
@@ -199,7 +221,6 @@ get_odd_numbers_list:
     jz @f
 
     mov rsi, [brk_start]
-    
 
     .loop:
         push rcx
@@ -247,18 +268,19 @@ print_number:
     push rdi
     push rsi
     push rax
+    push rdx
     mov rax, rdi         ; Input
     lea rdi, [buffer + 19] ; End of buffer
     mov byte [rdi], 0    ; Last symbol is NULL
     mov rcx, 10          ; Base 10
-.convert_loop:
-    dec rdi
-    xor rdx, rdx
-    div rcx
-    add dl, '0'
-    mov [rdi], dl
-    test rax, rax        ; testing for 0
-    jnz .convert_loop
+    .convert_loop:
+        dec rdi
+        xor rdx, rdx
+        div rcx
+        add dl, '0'
+        mov [rdi], dl
+        test rax, rax        ; testing for 0
+        jnz .convert_loop
 
     ; Вывод строки
     mov rsi, rdi         ; Pointer to the beginning of string
@@ -269,6 +291,7 @@ print_number:
     syscall
 
     call new_line
+    pop rdx
     pop rax
     pop rsi
     pop rdi
@@ -276,7 +299,13 @@ print_number:
 
 ; Завершение программы
 exit:
-    mov rax, 60          ; Системный вызов exit
-    xor rdi, rdi         ; Код возврата 0
+    ;freeing memory
+    mov rdi, [brk_start]
+    mov rax, 12
+    syscall
+    
+    ;syscall exit
+    mov rax, 60
+    xor rdi, rdi
     syscall
     ret
