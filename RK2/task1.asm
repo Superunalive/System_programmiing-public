@@ -1,28 +1,11 @@
 format elf64
 
-;comments for me
-; 1 - get all commands here
-; 2 - get it to print from address
-; 3 - read from file
-; 4 - put in mmap
-; 5 - profit
-
-; next program
-; 1 - learn clone
-; 2 - create array
-; 3 - modify array parallel to each other (clone array?)
-; 4 - combine results
-
-;first task in priority, then start Lab 7. This will make second task easier.
 	public _start
 
 	extrn initscr
 	extrn endwin
 	extrn refresh
 	extrn stdscr
-	;extrn getmaxx
-	;extrn getmaxy
-	;extrn move
 	extrn start_color
 	extrn init_pair
 	extrn addch
@@ -57,19 +40,19 @@ _start:
   	mov rdi, 0x2
   	call init_pair
 
-	;this is blue
+	;this is green
 	mov rdx, 0x2
   	mov rsi, 0x0
   	mov rdi, 0x3
   	call init_pair
 
-	;this is ???
+	;this is yellow
 	mov rdx, 0x3
   	mov rsi, 0x0
   	mov rdi, 0x4
   	call init_pair
 
-	;this is ???
+	;this is blue
 	mov rdx, 0x4
   	mov rsi, 0x0
   	mov rdi, 0x5
@@ -102,6 +85,13 @@ _start:
   	syscall
 
 	mov [length], rax
+
+	;returning to start of file
+	mov rax, 8
+	mov rdi, r12
+	mov rsi, 0
+	mov rdx, 0
+	syscall
 	
 	; syscall mmap
 	mov rdi, 0    ;начальный адрес выберет сама ОС
@@ -114,6 +104,7 @@ _start:
 	syscall
 
 	mov [anon_addr], rax  ;Сохраняем адрес памяти анонимного отображения
+	mov [anon_pos], rax
 
 	;writing from file to anon
 	mov rsi, rax
@@ -125,42 +116,39 @@ _start:
 	;close file
 	mov rax, 3
 	mov rdi, r12
+	syscall
 
 	;printing (painting)
 	xor rcx, rcx
 	xor rdi, rdi
-	mov rsi, anon_addr
-	mov [anon_pos], rsi
 
-	;rn is broken - jumps are weird and count of length is also unusual. Maybe read length from anon and not file?
-	;also broke exit, sometimes gives segfault
+	xor rcx, rcx
+	mov rcx, [length]
 	.loop:
+		mov rsi, [anon_pos]
 		xor rax, rax
-		mov al, '0'
+		mov al, [rsi]
+		push rsi
 		call paint
-		call refresh
 		pop rsi
-		mov rsi, anon_pos
-		inc rsi
-		mov [anon_pos], rsi
-		cmp rsi, [length]
-		jl .loop
-	
-	call new_line
-	call print_str
+		inc qword [anon_pos]
+		cmp rcx, 0
+		loop .loop
 
 	;temp pause
 	call getch
 
 	;syscall munmap to free memory
-	mov rdi, rsi
+	mov rdi, [anon_addr]
 	mov rsi, [length]
 	mov rax, 11
 	syscall
 
 	.exit:
 	call endwin
-	call exit
+	mov rax, 60
+	mov rdi, 0
+	syscall
 
 ;replace symbols
 paint:
