@@ -28,7 +28,7 @@ _start:
     call add_to_end
 
     ; Deleting element from start of array
-    call remove_from_beginning
+    ;call remove_from_beginning
 
     ; Counting numbers that end with 1 in base 10 (i.e. 11, 21, 101 and NOT 3 (in base 2 it is 11))
     call count_numbers_ending_with_1
@@ -98,29 +98,23 @@ remove_from_beginning:
     mov rsi, [brk_start]
     
     ; Moving left
-    mov rdi, rsi         ; to
-    add rsi, 8           ; from
     mov rcx, [array_size]
-    dec rcx              ; we need only all but 1
     jz .clear_last       ; If rcx is 0 - just clear array
 
     ; Copying the array
-    ;rep = repeat
-    ;movsq = moves from one buffer to another (qwords)
-    ;rep movsq                ; moves from rdi to rsi, then increments rdi, rsi by 8 and decrements rcx by 1 until 0
+    xor rcx, rcx
     .mloop:
-        mov rax, rsi
-        mov rdi, rax
-        add rdi, 8
-        add rsi, 8
-        loop .mloop
+        mov rax, [brk_start + rcx * 8 + 8]
+        mov [brk_start + rcx *8], rax
+        inc rcx
+        cmp rcx, [array_size]
+        jne .mloop
 
     ; Clearing last element before changing array size
     .clear_last:
         mov rsi, [array_ptr]
         sub rsi, 8
         mov qword [rsi], 0
-
     ; Decreasing array size (constant and the array itself)
     dec qword [array_size]
 
@@ -130,7 +124,7 @@ remove_from_beginning:
     syscall
 
     mov [array_ptr], rax
-
+    
     @@:
     ret
 
@@ -186,6 +180,7 @@ count_numbers_ending_with_1:
     ; Initializing counter + testing array size
     xor rax, rax
     mov rcx, [array_size]
+    mov rdi, rcx
     ;test = logical AND for each bit. Only changes flags. Here it basically checks if rcx is 0
     test rcx, rcx
     jz .done
@@ -193,21 +188,29 @@ count_numbers_ending_with_1:
     mov rsi, [brk_start]
 
     ; rax - counter, rsi - place of current number
+    ;current problem - exits early and skips most of the numbers
+    xor rcx, rcx
     .loop:
+        cmp rcx, [array_size]
+        je .done
+        push rcx
         push rax
-        mov rax, [rsi]
+        mov rax, [brk_start + 8*rcx]
         xor rdx, rdx
         mov rbx, 10
         div rbx
+
+        xor rax, rax
         pop rax
         cmp rdx, 1
         jne .next
-    
         inc rax
-
         .next:
-            add rsi, 8
-            loop .loop
+        pop rcx
+        inc rcx
+        
+        jmp .loop
+            
 
     .done:
         ret
