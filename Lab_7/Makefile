@@ -5,7 +5,7 @@ link: asm Sandbox.o
 	ld Sandbox.o -o useme
 
 run: link useme
-	./useme file.txt
+	./useme
 
 clean:
 	rm -f *.o

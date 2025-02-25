@@ -17,7 +17,7 @@ extrn getch
 extrn timeout
 extrn mydelay
 extrn noecho
-include 'func.asm'
+
 
 maxx dq 0
 maxy dq 0'
@@ -274,7 +274,9 @@ _start:
   
   .exit:
     call endwin
-    call exit
+    mov rax, 60
+    xor rdi, rdi
+    syscall
 
 paint:
   xor rax, rax
