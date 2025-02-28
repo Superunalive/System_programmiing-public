@@ -1,276 +1,300 @@
-format elf64
+format ELF64
 
+public _start
+section '.data' writable
+    array_size dq 0      ; Current element count
+    brk_start dq 0       ; Pointer to beginning of array
+    number dq 0     ; temp place for number
+    buffer db 20 dup(0)  ; Buffer to convert string to number
+    f db '/dev/urandom', 0 ; File for random numbers
 
-;to do:
-;replace names
-;comment everything
-;add own functions
-;check size problems (currently 12 is max)
+section '.text' executable
 
-public create_array
-public free_memory
-public edit
-public count_prost
-public count_chet
-public get_nechet
-include 'func.asm'
+; Important - some of the new methods used here are explained
+; This is more for me to understand them as this is my first time using some of them
+_start:
+    ; Initializing program
+    mov rdi, 20
+    call create_array
 
-section '.bss' writable
-array_begin rq 1
-array_end rq 1
-count rq 1
-size_elem = 8
+    ; Fill with random numbers
+    call fill
 
-;rdi - size of array (input)
-;rax - pointer to the start of array (output)
+    ; Adding new element to end of array
+    mov rdi, 41
+    call add_to_end
+
+    ; Deleting element from start of array
+    call remove_from_beginning
+
+    ; Counting numbers that end with 1 in base 10 (i.e. 11, 21, 101 and NOT 3 (in base 2 it is 11))
+    call count_numbers_ending_with_1
+    mov rdi, rax
+    call print_number
+
+    ; Getting full list of odd numbers
+    call get_odd_numbers_list
+
+    ; Exit + freeing memory
+    call exit
+
+; Input - none
+; Output - pointer to the beginning of the array
 create_array:
-	;Saving important parameters
-    mov [count], rdi
-    mov r12, rdi
-
-	;Finding the beginning of heap address
-    xor rdi, rdi
+    mov [number], rdi
+    ;syscall brk
     mov rax, 12
+    xor rdi, rdi         ; not moving the pointer
     syscall
 
-	;Incresing heap to hold numbers. Breaks on 13, adding anything - breaks on 14
-	;to do - do errors if possible
-    mov [array_begin], rax
-    mov rdi, [array_begin]
-    xor rdx, rdx
-    mov rax, [count]
-    mov rbx, 8
-    mul rbx
-    mov rdi, [count]
+    mov [brk_start], rax ; saving current position (beginning of array)
+
     mov rax, 12
+    mov rbx, [number]
+    mov [array_size], rbx
+    shl rbx, 3
+    mov rdi, [brk_start]
+    add rdi, rbx
     syscall
 
-    mov [array_end], rax
-    mov rax, array_begin
+    xor rax, rax
+    mov rax, [brk_start]
+
     ret
 
-;f db "/dev/urandom",0
-;number rq 1
-;Filling array
-;no input
-;no output (although technically speaking there is a pointer to last number)
-edit:
+; Input - none
+; Output - none
+fill:
+    ;opening the urandom file
+    mov rdi, f
+    mov rax, 2
+    mov rsi, 0o
+    syscall
+    cmp rax, 0
+    jl @f
+    mov r12, rax
 
-    ;opening file with random numbers
-    ;mov rdi, f
-    ;mov rax, 2
-    ;mov rsi, 0o
-    ;syscall
-    ;checking if we succeeded
-    ;cmp rax, 0
-    ;jl exit
-
-    ;moving file descriptor
-    ;mov r8, rax
-
-    xor rbx, rbx
-	;filling array with random numbers
-	mov rcx, array_begin
+    mov rcx, [array_size]
+    mov r13, [brk_start]
     .loop:
-
-		;saving next position and current number count. Generating new random number in rax
-        push rbx
         push rcx
-        ;call random
+        call random
+        mov qword [r13], rax
+        mov rdi, [r13]
+        call print_number
+        add r13, 8
         pop rcx
-        pop rbx
-
-		;putting new number in position (rax)
-        mov qword [rcx], '1'
-
-        inc rbx
-		;r12 - size of array (how many elements)
-        mov rax, r12
-
-		;adding pos*8 to current position
-		add rcx, size_elem
-
-        cmp rbx, rax
-        jne .loop
+        loop .loop
+    
+    call new_line
 
     ;closing file
-    ;mov rax, 3
-    ;mov rdi, r8
-    ;syscall
+    mov rdi, r12
+    mov rax, 3
+    syscall
+
+    xor r12, r12
+    @@:
+    ret
+
+; No input
+; Output - the number (rax)
+;Remember to return the number of bytes to 8!
+random:
+    ;reading from urandom file. r12 - file descriptor
+    xor rax, rax
+    mov rdi, r12
+    mov rsi, number
+    mov rdx, 1
+    syscall
+    mov rax, [number]
+    ret
+
+; Input - number to add (rdi)
+; Output - none
+add_to_end:
+    ; Saving the number
+    mov [number], rdi
+
+    ;brk syscall to accommodate new element
+    mov rcx, [array_size]
+    mov rax, 12          
+    mov rdi, [brk_start]
+    inc rcx              ; (+ 8 bytes for 1 number)
+    mov [array_size], rcx
+    shl rcx, 8
+    add rdi, rcx
+    add rdi, 8
+    syscall
+    
+    ; Changing some constants + putting the new number in its place
+    mov rbx, [number]
+    mov rcx, [array_size]
+    dec rcx
+    mov r12, [brk_start]
+    shl rcx, 3
+    add r12, rcx
+    mov [r12], rbx
 
     ret
 
+; Input - none
+; Output - none
+remove_from_beginning:
+    ; Check if empty
+    cmp qword [array_size], 0
+    je @f
 
+    mov r12, [brk_start]
 
+    ; Moving left
+    mov r13, r12         ; to
+    add r13, 8           ; from
+    mov rcx, [array_size]
+    dec rcx              ; we need only all but 1
+    jz .clear_last       ; If rcx is 0 - just clear array
 
-;Creates random number from urandom number
-;no input
-;rax - random number (output)
-random:
+    ; Copying the array
+    .copy_loop:
+        mov rax, [r13]
+        mov [r12], rax
+        add r12, 8
+        add r13, 8
+        loop .copy_loop
 
-   ;generating number (reading from file)
-   mov rax, 0
-   mov rdi, r8
-   ;mov rsi, number
+    ; Clearing last element before changing array size
+    .clear_last:
+        mov rcx, [array_size]
+        dec rcx
+        mov [array_size], rcx
+        mov qword [r13], 0
+
+    ; Decreasing array size (constant and the array itself)
+
+    mov rsi, r12
+    mov rax, 12
+    syscall
+
+    @@:
+    ret
+
+; Input - none
+; Output - numbers ending with 1 (rax)
+count_numbers_ending_with_1:
+    ; Initializing counter + testing array size
+    mov rcx, [array_size]
+    ;test = logical AND for each bit. Only changes flags. Here it basically checks if rcx is 0
+    test rcx, rcx
+    jz .done
+    
+    ; r12 - counter, r13 - place of current number
+    xor r12, r12
+    mov r13, [brk_start]
+    .loop:
+        mov qword rax, [r13]
+        xor rdx, rdx
+        mov rbx, 10
+        div rbx
+        cmp rdx, 1
+        jne .next
+    
+        inc r12
+
+        .next:
+            add r13, 8
+            loop .loop
+
+    .done:
+        mov rax, r12
+        ret
+
+; Input - none
+; Output - none, but it prints a list
+get_odd_numbers_list:
+    ; Checking if array is empty
+    mov rcx, [array_size]
+    test rcx, rcx
+    jz @f
+
+    mov r12, [brk_start]
+
+    .loop:
+        push rcx
+        mov rdx, [r12]
+        test rdx, 1
+        ;jz .next
+
+        mov rdi, rdx
+        call print_number
+
+        .next:
+            pop rcx
+            add r12, 8
+            loop .loop
+
+    @@:
+    ret
+
+;The function makes new line
+new_line:
+   push rax
+   push rdi
+   push rsi
+   push rdx
+   push rcx
+   mov rax, 0xA
+   push rax
+   mov rdi, 1
+   mov rsi, rsp
    mov rdx, 1
+   mov rax, 1
    syscall
-
-   ;saving number
-   ;mov rax, [number]
-
+   pop rax
+   pop rcx
+   pop rdx
+   pop rsi
+   pop rdi
+   pop rax
    ret
 
-
-
-count_prost:
-    xor rbx, rbx
-    xor rsi, rsi
-    .loop_prost:
-        mov rcx, array_begin
-
-        mov rax, rbx
-        mov rdx, size_elem
-        mul rdx
-
-        add rcx, rax
-
-        mov rax, qword [rcx]
-        push rsi
-        push rbx
-        call is_prost
-        pop rbx
-        pop rsi
-        ;mov rax, rax
-        add rsi, rax
-
-
-        inc rbx
-        mov rax, r12
-
-        cmp rbx, rax
-        jne .loop_prost
-    mov rax, rsi
-    ret
-
-
-
-count_chet:
-    xor rbx, rbx
-    xor rsi, rsi
-    mov rbx, -1
-    .loop_chet:
-        inc rbx
-        cmp rbx, r12
-        je .skip_chet
-
-        mov rcx, array_begin
-        mov rax, rbx
-        mov rdx, size_elem
-        mul rdx
-        add rcx, rax
-        mov rax, qword [rcx]
-
-        push rbx
-        push rsi
-        push rcx
-        push rax
-            mov rcx, 2
-            mov rax, rax
-            xor rdx, rdx
-            div rcx
-        pop rax
-        pop rcx
-        pop rsi
-        pop rbx
-            cmp rdx, 0
-            jne .loop_chet
-
-        ;mov rax, rax
-        inc rsi
-        cmp rbx, r12
-        jne .loop_chet
-    .skip_chet:
-        mov rax, rsi
-        ret
-
-
-get_nechet:
-    xor rdi, rdi
-    mov rax, 12
-    syscall
-    ret
-    xor rbx, rbx
-    xor rsi, rsi
-    mov rbx, -1
-    .loop_chet:
-        inc rbx
-        cmp rbx, r12
-        je .skip_chet
-
-        mov rcx, array_begin
-        mov rax, rbx
-        mov rdx, size_elem
-        mul rdx
-        add rcx, rax
-        mov rax, qword [rcx]
-
-        push rbx
-        push rsi
-        push rcx
-        push rax
-            mov rcx, 2
-            mov rax, rax
-            xor rdx, rdx
-            div rcx
-        pop rax
-        pop rcx
-        pop rsi
-        pop rbx
-            cmp rdx, 1
-            jne .loop_chet
-
-        ;mov rax, rax
-        inc rsi
-
-        cmp rbx, r12
-        jne .loop_chet
-    .skip_chet:
-        mov rax, rsi
-        ret
-
-
-
-;rax - input, output
-is_prost:
-    mov rsi, rax
-    xor rbx, rbx
-      inc rbx
-    .iter_prost:
-    inc rbx
-    cmp rbx, rsi
-    jge .prost
-    xor rdx, rdx
-        mov rax, rsi
-        mov rcx, rbx
+; Converts number to string and prints it. Done like this because number_str for some reason breaks my program
+; Input - number (rdi)
+; Output - none, but prints number
+print_number:
+    mov rax, rdi         ; Input
+    lea rdi, [buffer + 19] ; End of buffer
+    mov byte [rdi], 0    ; Last symbol is NULL
+    mov rcx, 10          ; Base 10
+    .convert_loop:
+        dec rdi
+        xor rdx, rdx
         div rcx
-        cmp rdx, 0
-        je .neprost
-        jne .iter_prost
-    .prost:
-        mov rax, 1
-        ret
-    .neprost:
-        mov rax, 0
-        ret
+        add dl, '0'
+        mov [rdi], dl
+        test rax, rax        ; testing for 0
+        jnz .convert_loop
 
-free_memory:
-    xor rdi,[array_begin]
-    mov rax, 12
+    ; Вывод строки
+    mov rsi, rdi         ; Pointer to the beginning of string
+    mov rdx, buffer + 20 ; End of buffer
+    sub rdx, rsi         ; String length
+    mov rax, 1           ; syscall write
+    mov rdi, 1           ; standard output
+    syscall
+
+    call new_line
+    xor rcx, rcx
+    .l:
+        mov [buffer + rcx], 0
+        inc rcx
+        cmp rcx, 20
+        jne .l
+    ret
+
+; Завершение программы
+exit:
+    mov rax, 60          ; Системный вызов exit
+    xor rdi, rdi         ; Код возврата 0
     syscall
     ret
 
-
-;exit:
-    ;mov rax, 60
-    ;xor rdi, rdi
-    ;syscall
