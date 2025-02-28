@@ -1,7 +1,7 @@
-HW - 80%
-RK2 - 30%
-Lab7
-Lab8.1
-Lab8.2
-Extr1
-Extr2
+HW - 90%
+RK2 - 50%
+Lab7 - 100%
+Lab8.1 - 10%
+Lab8.2 - 0%
+Extr1 - 30%
+Extr2 - 0%
