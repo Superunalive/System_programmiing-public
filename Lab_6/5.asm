@@ -20,7 +20,7 @@ extrn noecho
 
 
 maxx dq 0
-maxy dq 0'
+maxy dq 0
 minx dq 0
 miny dq 0
 color dq 0
