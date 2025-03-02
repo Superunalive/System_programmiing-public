@@ -11,7 +11,7 @@ section '.bss' writable
   number rb 100
   lbuf rb 100
 
-  ;dev urandom file + random number
+  ;dev urandom file + file descriptor
   f db "/dev/urandom", 0
   rand dq ?
   s dq ?
@@ -20,7 +20,7 @@ section '.bss' writable
   client1 dq ?
   client2 dq ?
 
-  ;array for counting
+  ;array
   counting_array dq 12 dup (0)
 
   ;errors
@@ -47,9 +47,9 @@ _start:
   mov rax, 2
   mov rdi, f
   mov rsi, 0o
-  syscal
+  syscall
   
-  ;moving random numberl
+  ;moving file descriptor
   mov [rand], rax
 
   ;opening socket
@@ -97,7 +97,7 @@ _start:
   syscall
   mov [client2], rax
 
-  ;generating inital random numbers (for array)
+  ;generating inital random numbers
   call rand_num
   add r8, rax
   mov r10, rax
@@ -108,7 +108,7 @@ _start:
   mov rax, '2'
   mov [lbuf], al
 
-  ;reading from second client
+  ;putting client2 on hold
   mov rax, 1
   mov rdi, [client2]
   mov rsi, lbuf
@@ -116,6 +116,7 @@ _start:
   syscall
 
   loop1:
+    ;print stuff for client1
     mov rax, '1'
     mov [lbuf], al
     mov rax, 1
@@ -124,24 +125,29 @@ _start:
     mov rdx, 100
     syscall
 
+    ;sending current sum to client1
     mov rsi, buffer
     mov rax, r8
     call number_str
+
     mov rax, 1
     mov rdi, [client1]
     mov rsi, buffer
     mov rdx, 100
     syscall
 
+    ;sending random number to client1
     mov rsi, buffer
     mov rax, r10
     call number_str
+
     mov rax, 1
     mov rdi, [client1]
     mov rsi, buffer
     mov rdx, 100
     syscall
 
+    ;response
     _read1:
     mov rax, 0
     mov rdi, [client1]
@@ -175,7 +181,7 @@ _start:
     mov rdx, 100
     syscall
 
-    ;
+    ;sending card value to client
     mov rsi, buffer
     mov rax, r8
     call number_str
@@ -185,6 +191,7 @@ _start:
     mov rdx, 100
     syscall
 
+  ;after passing/overflowing, waiting for the other player
   next:
     mov rax, '2'
     mov [lbuf], al
@@ -194,6 +201,7 @@ _start:
     mov rdx, 100
     syscall
 
+  ;same thing with client2 (did not separate stuff to not bloat space)
   loop2:
     mov rax, '1'
     mov [lbuf], al
@@ -219,14 +227,12 @@ _start:
     mov rdx, 100
     syscall
   
-  ;same thing with client 2
   _read2:
     mov rax, 0
     mov rdi, [client2]
     mov rsi, buffer
     mov rdx, 100
     syscall
-      
     cmp rax, 0
     je _read2
   
@@ -234,13 +240,11 @@ _start:
   call str_number
   cmp rax, 0
   je res
-  
   call rand_num
   mov r13, rax
   add r9, rax
   cmp r9, 21
   jl loop2
-
   mov rax, '3'
   mov [lbuf], al
   mov rax, 1
@@ -248,11 +252,9 @@ _start:
   mov rsi, lbuf
   mov rdx, 100
   syscall
-
   mov rsi, buffer
   mov rax, r9
   call number_str
-
   mov rax, 1
   mov rdi, [client2]
   mov rsi, buffer
@@ -261,6 +263,7 @@ _start:
 
   ;results
   res:
+  ;checking if overflow
   cmp r8, 21
   jnl notless1
   mov rax, 21
@@ -284,6 +287,7 @@ _start:
   cmp r8, r9
   jg win2
 
+  ;draw scenario
   mov rax, '7'
   mov [lbuf], al
   mov rax, 1
@@ -302,6 +306,7 @@ _start:
 
   jmp fin
 
+  ;client1 won, client2 lost
   win1:
   mov rax, '8'
   mov [lbuf], al
@@ -321,7 +326,7 @@ _start:
 
   jmp fin
 
-
+  ;client1 lost, client2 won
   win2:
     mov rax, '9'
     mov [lbuf], al
@@ -330,6 +335,7 @@ _start:
     mov rsi, lbuf
     mov rdx, 100
     syscall
+
     mov rax, '8'
     mov [lbuf], al
     mov rax, 1
@@ -337,6 +343,7 @@ _start:
     mov rsi, lbuf
     mov rdx, 100
     syscall
+
     jmp fin
 
   fin:
@@ -344,12 +351,15 @@ _start:
     mov rax, 3
     mov rdi, [rand]
     syscall
+
     mov rax, 3
     mov rdi, [s]
     syscall
+
     mov rax, 3
     mov rdi, [client1]
     syscall
+
     mov rax, 3
     mov rdi, [client2]
     syscall
@@ -364,6 +374,7 @@ rand_num:
   mov rdx, 2
   syscall
 
+  ;selecting a random card from array. If it's the fourth card - generate another
   mov al, [number]
   mov rbx, 8
   xor rdx, rdx

@@ -5,7 +5,9 @@ void fill(unsigned long* array, unsigned long);
 unsigned long add_to_end(unsigned long *array, unsigned long *size, unsigned long number);
 unsigned long remove_from_beginning(unsigned long * array, unsigned long * size);
 unsigned long count_numbers_ending_with_1(unsigned long * array, unsigned long size);
+unsigned long sum_of_numbers(unsigned long * array, unsigned long size);
 unsigned long get_odd_numbers_list(unsigned long * array, unsigned long size);
+unsigned long get_even_numbers_list(unsigned long * array, unsigned long size);
 
 int main(){
   unsigned long int n;
@@ -26,8 +28,11 @@ int main(){
         printf("%ld\n",p[i]);
     }
   printf("Элементов, оканчивающихся на 1: %ld\n", count_numbers_ending_with_1(p, n));
+  printf("Сумма: %ld\n", sum_of_numbers(p, n));
   printf("Нечётные числа:\n");
   get_odd_numbers_list(p, n);
+  printf("Чётные числа:\n");
+  get_even_numbers_list(p, n);
   //free_memory();
   return 0;
 

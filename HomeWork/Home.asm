@@ -5,7 +5,9 @@ public fill
 public add_to_end
 public remove_from_beginning
 public count_numbers_ending_with_1
+public sum_of_numbers
 public get_odd_numbers_list
+public get_even_numbers_list
 section '.data' writable
     f db '/dev/urandom', 0 ; File for random numbers
     temp dq 0
@@ -189,6 +191,29 @@ count_numbers_ending_with_1:
         mov rax, r12
         ret
 
+
+; Input - pointer to brk (rdi), size (rsi)
+; Output - sum (rax)
+sum_of_numbers:
+    ; Initializing counter + testing array size
+    mov rcx, rsi
+    test rcx, rcx
+    jz .sdone
+    
+    ; r12 - counter, r13 - place of current number
+    xor r12, r12
+    mov r13, rdi
+    .sloop:
+        mov qword rax, [r13]
+        add r12, rax
+        add r13, 8
+        loop .sloop
+
+    .sdone:
+        mov rax, r12
+        ret
+
+
 ; Input - pointer to array (rdi), size (rsi)
 ; Output - none, but it prints a list
 get_odd_numbers_list:
@@ -204,6 +229,34 @@ get_odd_numbers_list:
         mov rdx, [r12]
         test rdx, 1
         jz .next
+
+        mov rdi, rdx
+        call print_number
+
+        .next:
+            pop rcx
+            add r12, 8
+            loop .loop
+
+    @@:
+    ret
+
+
+; Input - pointer to array (rdi), size (rsi)
+; Output - none, but it prints a list
+get_even_numbers_list:
+    ; Checking if array is empty
+    mov rcx, rsi
+    test rcx, rcx
+    jz @f
+
+    mov r12, rdi
+
+    .loop:
+        push rcx
+        mov rdx, [r12]
+        test rdx, 1
+        jnz .next
 
         mov rdi, rdx
         call print_number
