@@ -1,110 +1,133 @@
-format ELF64
-
+format elf64
 public _start
+include 'func.asm'
 
-section '.text' executable  ; Секция кода
+section '.data' writeable
+  
+  msg_1 db 'Error bind', 0xa, 0
+  msg_2 db 'Successfull bind', 0xa, 0
+  msg_3 db 'Successful connect', 0xa, 0
+  msg_4 db 'Error connect', 0xa, 0
 
-;Similar comments for client that are in server file are skipped UNLESS actually really important
-SYS_SOCKET = 41
-SYS_CONNECT = 42
-SYS_READ = 0
-SYS_WRITE = 1
-SYS_CLOSE = 3
-SYS_EXIT = 60
+section '.bss' writable
+	
+  buffer rb 100
+  
 
-SOCK_STREAM = 1
-INADDR_LOOPBACK = 0x7F000001  ; 127.0.0.1
-PORT = 12345
+struc sockaddr_client
+{
+  .sin_family dw 2         ; AF_INET
+  .sin_port dw 0x4d9     ; port 55556
+  .sin_addr dd 0           ; localhost
+  .sin_zero_1 dd 0
+  .sin_zero_2 dd 0
+}
 
+addrstr_client sockaddr_client 
+addrlen_client = $ - addrstr_client
+  
+struc sockaddr_server 
+{
+  .sin_family dw 2         ; AF_INET
+  .sin_port dw 0x3d9     ; port 55555
+  .sin_addr dd 0           ; localhost
+  .sin_zero_1 dd 0
+  .sin_zero_2 dd 0
+}
+
+addrstr_server sockaddr_server 
+addrlen_server = $ - addrstr_server
+
+section '.text' executable
+	
 _start:
-    ; Creating socket
-    mov rax, SYS_SOCKET
-    mov rdi, 2
-    mov rsi, SOCK_STREAM
-    mov rdx, 0
+
+    ;;Создаем сокет клиента
+    mov rdi, 2 ;AF_INET - IP v4 
+    mov rsi, 1 ;SOCK_STREAM
+    mov rdx, 6 ;TCP
+    mov rax, 41
     syscall
-
-    cmp rax, 0
-    jl .exit
-
-    ; Socket descriptor
-    mov rbx, rax
-
-    ; syscall bind
-    mov rax, 49
-    mov rdi, rbx              ; server descriptor
+    
+    ;;Сохраняем дескриптор сокета клиента
+    mov r9, rax
+    
+       
+    ;;Связываем сокет с адресом
+    
+    mov rax, 49              ; SYS_BIND
+    mov rdi, r9              ; дескриптор сервера
     mov rsi, addrstr_client  ; sockaddr_in struct
     mov rdx, addrlen_client  ; length of sockaddr_in
     syscall
 
-    ; Server connection
-    mov rax, SYS_CONNECT
-    mov rdi, rbx
-    lea rsi, [addrstr_client]
-    mov rdx, addrlen_client ; Размер структуры sockaddr_in
+    ;; Проверяем успешность вызова
+    cmp        rax, 0
+    jl         _bind_error
+    
+    mov rsi, msg_2
+    call print_str
+    
+    ;;Подключаемся к серверу
+    mov rax, 42 ;sys_connect
+    mov rdi, r9 ;дескриптор
+    mov rsi, addrstr_server 
+    mov rdx, addrlen_server
     syscall
-
+    
     cmp rax, 0
-    jl .close_socket
+    jl  _connect_error
+    
+    .loop:
+      ;;Читаем сообщение с клавиатуры
+      mov rsi, buffer
+      call input_keyboard
+    
+      ;;Отправляем сообщение на сервер
+      mov rax, 1
+      mov rdi, r9
+      mov rsi, buffer
+      mov rdx, 100
+      syscall
 
-    ; Sending '1' to server
-    mov rax, SYS_WRITE
-    mov rdi, rbx
-    lea rsi, [input_char]
-    mov rdx, 1
+      mov rax, 'q'
+      cmp [buffer], al
+      jne .loop
+      cmp [buffer + 1], 0
+      jne .loop
+    
+    .rloop:
+      mov rax, 0 ;номер системного вызова чтения
+      mov rdi, r9 ;загружаем файловый дескриптор
+      mov rsi, buffer ;указываем, куда помещать прочитанные данные
+      mov rdx, 100 ;устанавливаем количество считываемых данных
+      syscall ;выполняем системный вызов read
+
+      cmp rax, 0
+      je .rloop
+
+    call print_str
+    call new_line
+    
+    ;;Закрываем чтение, запись из клиентского сокета
+    mov rax, 48
+    mov rdi, r9
+    mov rsi, 2
     syscall
-
-    ; Reading from server
-    mov rax, SYS_READ
-    mov rdi, rbx
-    lea rsi, [buffer]
-    mov rdx, 1024
+          
+    ;;Закрываем клиентский сокет
+    mov rdi, r9
+    mov rax, 3
     syscall
+    
+    call exit
 
-    ; Output data
-    mov rax, SYS_WRITE
-    mov rdi, 1  ; stdout
-    lea rsi, [buffer]
-    mov rdx, 1024
-    syscall
-
-.close_socket:
-    ; Closing socket
-    mov rax, SYS_CLOSE
-    mov rdi, rbx
-    syscall
-
-.exit:
-    ; Finish program
-    mov rax, SYS_EXIT
-    xor rdi, rdi
-    syscall
-
-section '.data' writable  ; Секция данных
-
-input_char db '1'
-buffer rb 1024
-;structures for sockets
-  struc sockaddr_client
-  {
-    .sin_family dw 2         ; AF_INET
-    .sin_port dw 0x5d9     ; port
-    .sin_addr dd 0           ; localhost
-    .sin_zero_1 dd 0
-    .sin_zero_2 dd 0
-  }
-
-  addrstr_client sockaddr_client 
-  addrlen_client = $ - addrstr_client
-  
-  struc sockaddr_server 
-  {
-    .sin_family dw 2         ; AF_INET
-    .sin_port dw 0x3d9     ; port 55555
-    .sin_addr dd 0           ; localhost
-    .sin_zero_1 dd 0
-    .sin_zero_2 dd 0
-  }
-
-  addrstr_server sockaddr_server 
-  addrlen_server = $ - addrstr_server
+ _bind_error:
+   mov rsi, msg_1
+   call print_str
+   call exit
+   
+_connect_error:
+   mov rsi, msg_4
+   call print_str
+   call exit

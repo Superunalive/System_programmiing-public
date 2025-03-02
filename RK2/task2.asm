@@ -1,138 +1,139 @@
 format ELF64
 
-	public _start
-  public create_array
-	public free_memory
-	include 'func.asm'
-	
-	THREAD_FLAGS=2147585792
+public _start
+include 'func.asm'
 
+section '.data' writable
+    array_size dq 0      ; array size
+    array_ptr  dq 0      ; pointer to array
+    buffer rq 100        ; buffer
 
-	section '.data' writable
-	
-	section '.bss' writable
-	array_begin rq 1
-	count rq 1
-	stack_1 rq 4096 
-	stack_2 rq 4096
-	
-	section '.text' executable
-	
+section '.text' executable
+
 _start:
+    ; checking for arguments
+    pop rcx
+    cmp rcx, 2
+    jne exit
 
-  ;reading array length
-  pop rcx
-	mov rsi, [rsp + 8]
-	call str_number
-	xor rcx, rcx
+    ; saving number of elements
+    pop rcx
+    mov rsi, [rsp]
+    call str_number    
+    mov [array_size], rax
 
-  call create_array
+    ; syscall brk
+    mov rax, 12
+    xor rdi, rdi
+    syscall
+    mov [array_ptr], rax
 
-   ;;Запускаем первый тред
-   mov rdi, THREAD_FLAGS
-   mov rsi, 4096
-   add rsi, stack_1
-   mov rax, 56
-   syscall
-   cmp rax, 0
-   je thread_1
-   
-   ;;Запускаем второй тред
-   mov rdi, THREAD_FLAGS
-   mov rsi, 4096
-   add rsi, stack_2
-   mov rax, 56
-   syscall
-   cmp rax, 0
-   je thread_2
+    ; allocating memory
+    mov rbx, [array_size]
+    shl rbx, 2
+    add rax, rbx
+    mov rdi, rax
+    mov rax, 12
+    syscall
+    
+    ; fill array
+    mov rcx, [array_size]
+    mov rdi, [array_ptr]
+    mov eax, 1
+    .fill_array:
+      mov [rdi], eax
+      add rdi, 4
+      inc eax
+      loop .fill_array
 
-   xor rcx, rcx
-   .print_loop:
-    mov rax, [array_begin + rcx * 8]
-    call number_str
-    call print_str
-    call new_line
-    inc rcx
-    cmp rcx, [count]
-    jne .print_loop
-    call new_line
-   
-   call free_memory
-   call exit
-   
-	
-thread_1:
-
-  mov rcx, 0
-  mov rbx, 2
-
-  .loop_change_even:
+    ; syscall clone for child_process1
+    mov rax, 56
+    mov rdi, 0x100       ; CLONE_FS | CLONE_FILES | CLONE_SIGHAND (без CLONE_VM)
+    xor rsi, rsi
     xor rdx, rdx
-    xor rax, rax
-    mov rax, [array_begin + rcx]
-    div rbx
-    inc rcx
+    xor r10, r10
+    syscall
 
-    cmp rdx, 0
-    jne .is_end
-    mov rax, [array_begin + rcx * 8]
-    inc rax
-    mov [array_begin + rcx * 8], rax
+    cmp rax, 0
+    je child_process1
+    mov r12, rax         ; Сохраняем PID первого дочернего процесса
 
-    .is_end:
-    cmp rcx, [count]
-    jne .loop_change_even
-
-  call exit 
-  
-thread_2:
-  mov rcx, 0
-  mov rbx, 2
-
-  .loop_change_uneven:
+    ; syscall clone for child_process2
+    mov rax, 56
+    mov rdi, 0x100       ; CLONE_FS | CLONE_FILES | CLONE_SIGHAND (без CLONE_VM)
+    xor rsi, rsi
     xor rdx, rdx
-    xor rax, rax
-    mov rax, [array_begin + rcx * 8]
-    div rbx
-    inc rcx
+    xor r10, r10
+    syscall
 
-    cmp rdx, 0
-    je .is_end
-    mov rax, [array_begin + rcx * 8]
-    dec rax
-    mov [array_begin + rcx * 8], rax
+    cmp rax, 0
+    je child_process2
+    mov r13, rax         ; Сохраняем PID второго дочернего процесса
 
-    .is_end:
-    cmp rcx, [count]
-    jne .loop_change_uneven
+    ; PARENT
+    ;delay because wait pid is not enough
+    mov rsi, buffer
+    call input_keyboard
 
-  call exit 
+    ; syscall wait pid for child_process1
+    mov rax, 61          ; sys_waitpid
+    mov rdi, r12         ; PID первого процесса
+    xor rsi, rsi         ; Указатель на статус
+    xor rdx, rdx         ; Опции (0)
+    syscall
 
-create_array:
-	mov [count], rax
-	xor rdi, rdi
-	mov rax, 12
-	syscall
-	mov [array_begin], rax
-	mov rdi, [array_begin]
-	add rdi, [count]
-	mov rax, 12
-	syscall
+    ; syscall wait pid for child_process2
+    mov rax, 61          ; sys_waitpid
+    mov rdi, r13         ; PID второго процесса
+    xor rsi, rsi         ; Указатель на статус
+    xor rdx, rdx         ; Опции (0)
+    syscall
 
-  mov rax, array_begin
-  xor rcx, rcx
-  mov rbx, 1
-  .fiil_loop:
-      mov [array_begin + rcx * 8], rbx
-      inc rcx
-      inc rbx
-      cmp rcx, [count]
-      jne .fiil_loop
-	ret
+    ; printing array
+    mov rcx, [array_size]
+    mov rdi, [array_ptr]
+    mov rsi, buffer
+    .print_array:
+      mov eax, [rdi]
+      call number_str
+      call print_str
+      call new_line
+      add rdi, 4
+      loop .print_array
 
-free_memory:
-	xor rdi,[array_begin]
-	mov rax, 12
-	syscall
-	ret
-  
+    jmp exit
+
+child_process1:
+    ; add 1 to even positions
+    mov rcx, [array_size]
+    shr rcx, 1           ; Количество четных позиций = array_size / 2
+    mov rdi, [array_ptr]
+    add rdi, 4           ; Начинаем с первой четной позиции (индекс 1)
+    .loop1:
+      mov eax, [rdi]
+      inc eax
+      mov [rdi], eax
+      add rdi, 8          ; Переходим к следующей четной позиции
+      loop .loop1
+
+    ; Завершаем дочерний процесс
+    jmp exit
+
+child_process2:
+    ; decrease odd positions by 1
+    mov rcx, [array_size]
+    shr rcx, 1           ; Количество нечетных позиций = array_size / 2
+    test qword [array_size], 1 ; Проверяем, нечетное ли array_size
+    jz @f                ; Если четное, пропускаем увеличение
+    inc rcx              ; Если нечетное, увеличиваем количество на 1
+    @@:
+    mov rdi, [array_ptr]
+    .loop2:
+      mov eax, [rdi]
+      dec eax
+      mov [rdi], eax
+      add rdi, 8          ; Переходим к следующей нечетной позиции
+      loop .loop2
+
+    ; Завершаем дочерний процесс
+    jmp exit

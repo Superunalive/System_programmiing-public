@@ -195,23 +195,23 @@ average:
 
 ;sorts array (not very effective, but idc)
 bubble_sort:
-    mov rcx, [array_size]     ; Количество элементов массива
-    dec rcx                   ; Нужно (n-1) итераций
+    mov rcx, [array_size]
+    dec rcx
     .outer_loop:
-        lea rsi, [array] ; Указатель на начало массива
-        mov rdx, rcx          ; Счётчик для внутреннего цикла
+        lea rsi, [array]
+        mov rdx, rcx
         .inner_loop:
-            mov eax, [rsi]    ; Загружаем текущий элемент
-            mov ebx, [rsi + 4] ; Загружаем следующий элемент
-            cmp eax, ebx      ; Сравниваем текущий и следующий элементы
-            jle .no_swap      ; Если текущий <= следующий, не меняем местами
-            mov [rsi], ebx    ; Меняем местами
+            mov eax, [rsi]
+            mov ebx, [rsi + 4]
+            cmp eax, ebx
+            jle .no_swap
+            mov [rsi], ebx
             mov [rsi + 4], eax
             .no_swap:
-            add rsi, 4        ; Переходим к следующему элементу
-            dec rdx           ; Уменьшаем счётчик внутреннего цикла
-            jnz .inner_loop   ; Повторяем, если не все элементы пройдены
-        loop .outer_loop      ; Повторяем внешний цикл
+            add rsi, 4
+            dec rdx
+            jnz .inner_loop
+        loop .outer_loop
     ret
 
 ; prints space

@@ -2,185 +2,195 @@ format elf64
 
 public _start
 
-;ld task_2.o -lc -dynamic-linker /lib64/ld-linux-x86-64.so.2
 extrn printf
 extrn scanf
 extrn atof
 
 section '.data' writable
-input db "%lf", 0
-ftype db "%lf", 0xa, 0
-output db "%-10lf%-10d%-10lf%-10lf", 0xa, 0
-header db "x   passes       lside      rside", 0xa, 0
-const_1 dq 2.0
-const dq 4.0
-partial dq 0.1
+    input db "%lf", 0
+    ftype db "member = %-15.10lf, power = %-15.10lf", 0xa, 0  ; Отладочный вывод
+    output db "%-15.10lf %-10d %-15.10lf %-15.10lf", 0xa, 0
+    header db "x           passes       lside        rside", 0xa, 0
+    const_1 dq 2.0
+    const dq 4.0
+    partial dq 0.05
+    x_power_4 dq 0.0  ; Для хранения x^4
 
 section '.bss' writable
-atan rq 1
-ln rq 1
-member rq 1
-lside rq 1 ;the equation
-rside rq 1 ;the approx.
-precision rq 1 ;accuracy
-diff rq 1 ;temp for |lside - rside|
-number dq 0.0 ;x value
-count dq 1 ;amount of passes
+    atan rq 1
+    ln rq 1
+    member rq 1
+    lside rq 1 ; the equation
+    rside rq 1 ; the approx.
+    precision rq 1 ; accuracy
+    diff rq 1 ; temp for |lside - rside|
+    number dq 0.3 ; x value
+    count dq 1 ; amount of passes
+    power rq 1 ; for (4n+1)
+    cntr dq 0
 
 section '.text' executable
 _start:
-
-    ;ask for precision - basically max difference between two numbers.
+    ; ask for precision
     mov rdi, input
     mov rsi, precision
     movq xmm0, rsi
     mov rax, 1
     call scanf
 
-    ;printing top row
+    ; printing top row
     mov rdi, header
     call printf
 
-    ;number = x
+    ; number = x
     .loop:
         finit
         fld [number]
         fld1
         fcomip st0, st1
         jle .end
+        cmp [cntr], 6
+        jae .end
         
-        ;left side
-        ;atan(x)
+        ; left side
+        ; atan(x)
         finit
-        fld qword [number]
+        fld [number]
         fld1
         fpatan
-        fstp qword [atan]
+        fstp [atan]
 
-        ;atan(x)/2
+        ; atan(x)/2
         finit
-        fld qword [const_1]
-        fld qword [atan]
+        fld [const_1]
+        fld [atan]
         fdiv st0, st1
-        fstp qword [atan]
+        fstp [atan]
 
-        ;1+x
+        ; 1+x
         finit
-        fld qword [number]
+        fld [number]
         fld1
         fadd st0, st1
-        fstp qword [ln]
+        fstp [ln]
         
-        ;1-x
+        ; 1-x
         finit
-        fld qword [number]
-        fld1
-        fsub st1, st0
-        ;1+x/1-x
-        fld qword [ln]
-        fdiv st0, st1
-        fstp qword [ln]
-
-        ;ln(1+x/1-x)
-        finit
-        fldln2
-        fld qword [ln]
-        fyl2x
-        fstp qword [ln]
-
-        ;ln(1+x/1-x)/4
-        finit
-        fld qword [const]
-        fld qword [ln]
-        fdiv st0, st1
-        fstp qword [ln]
-
-        ;complete left side
-        finit
-        fld qword [atan]
-        fld qword [ln]
-        fadd st0, st1
-        fstp qword [lside]
-
-        ;right side, first member = x
-        finit
-        fld1
+        fld [number]
         fld1
         fsub st0, st1
-        fstp qword [count]
-        fld qword [number]
-        fstp qword [rside]
-        fld qword [number]
-        fstp qword [member]
+        ; (1+x)/(1-x)
+        fld [ln]
+        fdiv st0, st1
+        fstp [ln]
+
+        ; ln((1+x)/(1-x))
+        finit
+        fldln2
+        fld [ln]
+        fyl2x
+        fstp [ln]
+
+        ; ln((1+x)/(1-x))/4
+        finit
+        fld [const]
+        fld [ln]
+        fdiv st0, st1
+        fstp [ln]
+
+        ; complete left side
+        finit
+        fld [atan]
+        fld [ln]
+        fadd st0, st1
+        fstp [lside]
+
+        ; right side, first member = x
+        mov qword [count], 0
+        finit
+        fld [number]
+        fstp [rside]
+        fld [number]
+        fstp [member]
+
+        ; precompute x^4
+        finit
+        fld [number]
+        fld [number]
+        fmul st0, st1
+        fld [number]
+        fmul st0, st1
+        fld [number]
+        fmul st0, st1
+        fstp [x_power_4]
+
         .loop2:
-            ;check if qualifies
+            ; check if qualifies
             finit
-            fld qword [rside]
-            fld qword [lside]
+            fld [rside]
+            fld [lside]
             fsub st0, st1
             fabs
-            fstp qword [diff]
+            fstp [diff]
 
             finit
-            fld qword [diff]
-            fld qword [precision]
+            fld [diff]
+            fld [precision]
             fcomip st0, st1
             ja .next
 
-        ;if not enough - get one more
-        inc qword [count]
+            ; if not enough - get one more
+            inc qword [count]
 
-        ;4n + 1, n = count   
-        finit
-        fild qword [count]
-        fld qword [const_1]
-        fmul st0, st1
-        fld1
-        fadd st0, st1
-        fstp qword [atan]
+            ; calculate next member: member * x^4
+            finit
+            fld [member]
+            fld [x_power_4]
+            fmul st0, st1
+            fstp [member]
 
-        ;next (x^(4n+1)), meaning member *x four times
-        finit
-        fld qword [member]
-        fld qword [number]
-        fmul st1, st0
-        fld qword [number]
-        fmul st1, st0
-        fld qword [number]
-        fmul st1, st0
-        fld qword [number]
-        fmul st1, st0
-        fstp qword [member]
+            ; calculate power = 4n+1
+            finit
+            fild qword [count]
+            fld [const]
+            fmul st0, st1
+            fld1
+            fadd st0, st1
+            fstp [power]
 
-        ;rside - adding member/(4n+1)
-        finit
-        fld qword [member]
-        fld qword [atan]
-        fdiv st1, st0
-        fld qword [rside]
-        fadd st1, st0
-        fstp qword [rside]
+            ; rside += member / (4n+1)
+            finit
+            fld [member]
+            fld [power]
+            fdivp st1, st0
+            fld [rside]
+            fadd st0, st1
+            fstp [rside]
 
-        jmp .loop2
+            cmp [count], 10
+            jae .next
+            jmp .loop2
   
         .next:
-        ;printing row
+        ; printing row
         mov rdi, output
-        mov rsi, [number]
-        mov rdx, [count]
-        mov rax, 2
-        movq xmm0, [atan]
-        movq xmm1, [rside]
+        movq xmm0, [number]
+        mov rsi, [count]
+        movq xmm1, [lside]
+        movq xmm2, [rside]
+        mov rax, 3
         call printf
 
         finit
-        fld qword [partial]
-        fld qword [number]
+        fld [partial]
+        fld [number]
         fadd st0, st1
-        fstp qword [number]
+        fstp [number]
         
+        inc [cntr]
         jmp .loop
 
     .end:
         mov rax, 60
+        xor rdi, rdi
         syscall
